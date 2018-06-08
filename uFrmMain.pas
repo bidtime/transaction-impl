@@ -17,21 +17,32 @@ type
     Splitter1: TSplitter;
     memoTarget: TMemo;
     ToolButton1: TToolButton;
-    Edit2: TEdit;
     Splitter2: TSplitter;
     MemoSrc: TMemo;
     cbxRmTrans: TCheckBox;
     cbxAddTrans: TCheckBox;
     cbxWriteFile: TCheckBox;
     ToolButton2: TToolButton;
+    ToolButton3: TToolButton;
+    ComboBox1: TComboBox;
+    Panel1: TPanel;
+    Splitter3: TSplitter;
+    memoResult: TMemo;
+    Button2: TButton;
+    ToolButton4: TToolButton;
+    Button3: TButton;
     procedure Button1Click(Sender: TObject);
+    procedure ComboBox1Change(Sender: TObject);
+    procedure Button2Click(Sender: TObject);
+    procedure Button3Click(Sender: TObject);
   private
-    FCounts: integer;
+    FChanged, FSearched: integer;
     { Private declarations }
-    procedure deleteCounts();
-    procedure insertCounts();
+    procedure insertCounts(const applies: integer);
     procedure setStatue(const S: string);
     procedure setStatueN(const S: string; const n: integer);
+    procedure testWriteFile(const S: string; strs: TStrings;
+      const applies: integer);
   public
     { Public declarations }
   end;
@@ -118,27 +129,24 @@ begin
    end;
 end;
 
-procedure TForm1.Button1Click(Sender: TObject);
+procedure TForm1.testWriteFile(const S: string; strs: TStrings; const applies: integer);
+begin
+  insertCounts(applies);
+  if (applies <> 0) then begin
+    self.memoResult.lines.add(S);
+  end;
+  //
+  if (cbxWriteFile.Checked) then begin
+    strs.SaveToFile(S, TEncoding.UTF8);
+  end;
+end;
 
-  procedure readFile(const S: string; strs: TStrings);
+  procedure readItFile(const S: string; strs: TStrings);
   begin
     strs.LoadFromFile(S, TEncoding.UTF8);
   end;
 
-  procedure testWriteFile(const S: string; strs: TStrings);
-  begin
-    if cbxWriteFile.Checked then begin
-      strs.SaveToFile(S, TEncoding.UTF8);
-    end;
-  end;
-
-  procedure getFiles();
-  begin
-    self.MemoFiles.Clear;
-    self.MemoSrc.Clear;
-    self.memoTarget.Clear;
-    GetFileListEx(self.Edit1.Text, self.Edit2.Text, self.MemoFiles.Lines, true);
-  end;
+procedure TForm1.Button1Click(Sender: TObject);
 
   procedure doIt(const strs: TStrings);
 
@@ -148,25 +156,36 @@ procedure TForm1.Button1Click(Sender: TObject);
 
     procedure removeTrans(const fName: string; strsSrc, strsDest: TStrings);
     var S: string;
-      I: integer;
+      I, changes, imports, totals: integer;
     begin
       strsSrc.Clear;
       strsDest.Clear;
+      changes := 0;
+      imports := 0;
       //
-      readFile(fName, strsSrc);
+      readItFile(fName, strsSrc);
       for I := 0 to strsSrc.Count - 1 do begin
         S := strsSrc[I];
         if S.IndexOf(IMPORT_TRANS)>=0 then begin
+          Inc(imports);
           continue;
         end else if (S.indexOf('@Transactional')>=0) then begin
+          if S.IndexOf('Propagation.NESTED')>=0 then begin
+            continue;
+          end;
+          Inc(changes);
           continue;
         end else begin
           strsDest.Add(S);
-          //incCounts();
         end;
       end;
       //
-      testWriteFile(fName, strsDest);
+      if changes>0 then begin
+        totals := changes + imports;
+      end else begin
+        totals := changes;      
+      end;
+      testWriteFile(fName, strsDest, totals);
     end;
 
     procedure addTrans(const fName: string; strsSrc, strsDest: TStrings);
@@ -201,7 +220,7 @@ procedure TForm1.Button1Click(Sender: TObject);
       end;
 
     var S, strTmp: string;
-      I, lastImportIdx: integer;
+      I, lastImportIdx, changes: integer;
       addImportT, addMethodT: boolean;
       method: boolean;
     begin
@@ -211,8 +230,9 @@ procedure TForm1.Button1Click(Sender: TObject);
       addMethodT := false;
       method := false;
       lastImportIdx := 0;
+      changes := 0;
       //
-      readFile(fName, strsSrc);
+      readItFile(fName, strsSrc);
       for I := 0 to strsSrc.Count - 1 do begin
         S := strsSrc[I];
         strTmp := s.Trim;
@@ -232,19 +252,20 @@ procedure TForm1.Button1Click(Sender: TObject);
             addMethodT := true;
           end;
 
-          if S.Trim.StartsWith('public ') then begin
+          if (strTmp.StartsWith('public ')) and (not strTmp.Contains('callback'))
+             and (not strTmp.Contains(';')) then begin
             if not addMethodT then begin
               strsDest.Add(getSpace(S.Length, strTmp.Length) + getTransV(strTmp));
+              Inc(changes);
             end;
             addMethodT := false;
           end;
 
         end;
         strsDest.Add(S);
-        //incCounts();
       end;
       //
-      testWriteFile(fName, strsDest);
+      testWriteFile(fName, strsDest, changes);
     end;
 
   var I: integer;
@@ -260,28 +281,160 @@ procedure TForm1.Button1Click(Sender: TObject);
     end;
   end;
 
+  procedure clear();
+  begin
+    self.MemoSrc.Clear;
+    self.memoTarget.Clear;
+    self.memoResult.Clear;
+  end;
+
 begin
-  FCounts := 0;
-  getFiles();
+  FChanged := 0;
+  FSearched := 0;
+  clear();
   doIt(self.MemoFiles.Lines);
 end;
 
-procedure TForm1.insertCounts;
+procedure TForm1.Button2Click(Sender: TObject);
+
+  procedure getFiles();
+  begin
+    self.MemoFiles.Clear;
+    self.MemoSrc.Clear;
+    self.memoTarget.Clear;
+    self.memoResult.Clear;
+    GetFileListEx(self.Edit1.Text, self.combobox1.Text, self.MemoFiles.Lines, true);
+  end;
+
 begin
-  Inc(FCounts);
-  setStatue('search: ' + IntToStr(FCounts));
+  getFiles();
 end;
 
-procedure TForm1.deleteCounts;
+procedure TForm1.Button3Click(Sender: TObject);
+
+    const IMPORT_NOTNULL = 'import javax.validation.constraints.NotNull;';
+    const NOTNULL = '@NotNull';
+
+    const IMPORT_NOTEMPTY = 'import org.hibernate.validator.constraints.NotEmpty;';
+    const NOTEMPTY = '@NotEmpty';
+
+    procedure replaceNotBlank(const fName: string; strsSrc_, strsDest_: TStrings);
+
+      function doStrs(strsDst: TStrings): integer;
+      var i, incNotEmpty, decNotEmpty: integer;
+        incNotNull, decNotNull: integer;
+        S, strTmp: string;
+        hit: boolean;
+      begin
+        Result := 0;
+        incNotEmpty := 0;
+        decNotEmpty := 0;
+        hit := false;
+        for I := strsDst.Count - 1 downto 0 do begin
+          S := strsDst[I];
+          strTmp := S.Trim;
+          if strTmp.IsEmpty then begin
+            hit := false;
+          end else begin
+            //
+            if (strTmp.StartsWith('private String '))
+                or (strTmp.StartsWith('protected String '))
+                 or (strTmp.StartsWith('String ')) then begin
+              hit := true;
+            end else begin
+              if hit then begin
+                if (strTmp.StartsWith(NOTNULL)) then begin
+                  strsDst[I] := S.Replace(NOTNULL, NOTEMPTY);
+                  Dec(decNotNull);
+                end;
+              end else begin
+                if (strTmp.StartsWith(NOTNULL)) then begin
+                  Inc(incNotNull);
+                end else if (strTmp.StartsWith(NOTEMPTY)) then begin
+                  Inc(incNotEmpty);
+                end;
+              end;
+            end;
+          end;
+        end;
+        Result := incNotNull - decNotNull; 
+      end;
+
+      function getSpace(const rawLen, trimLen: integer): string;
+      var I: integer;
+      begin
+        Result := '';
+        for I := 0 to rawLen - trimLen - 1 do begin
+          Result := Result + ' ';
+        end;
+      end;
+
+    var 
+      changes: integer;
+    begin
+      strsSrc_.Clear;
+      strsDest_.Clear;
+      readItFile(fName, strsSrc_);
+      strsDest_.AddStrings(strsSrc_);
+      changes := doStrs(strsDest_);
+      //
+      testWriteFile(fName, strsDest_, changes);
+    end;
+
+  procedure doIt(const strs: TStrings);
+  var I: integer;
+    javaFile: string;
+  begin
+    for I := 0 to strs.Count - 1 do begin
+      javaFile := strs[I];
+      replaceNotBlank(javaFile, self.MemoSrc.Lines, self.memoTarget.Lines);
+      break;
+    end;
+  end;
+
+  procedure clear();
+  begin
+    self.MemoSrc.Clear;
+    self.memoTarget.Clear;
+    self.memoResult.Clear;
+  end;
+
 begin
-  Inc(FCounts);
-  setStatue('search: ' + IntToStr(FCounts));
+  FChanged := 0;
+  FSearched := 0;
+  clear();
+  doIt(self.MemoFiles.Lines);
+end;
+
+procedure TForm1.ComboBox1Change(Sender: TObject);
+var S: string;
+begin
+  if Sender is TComboBox then begin
+    S := TComboBox(Sender).Text;
+    if S = '*Impl.java' then begin
+      cbxAddTrans.checked := true;
+      cbxRmTrans.checked := false;
+    end else if S = '*Manager.java' then begin
+      cbxAddTrans.checked := false;
+      cbxRmTrans.checked := true;
+    end;
+  end;
+end;
+
+procedure TForm1.insertCounts(const applies: integer);
+begin
+  if applies > 0 then begin
+    Inc(FChanged);
+  end;
+  Inc(FSearched);
+  setStatue('search: ' + IntToStr(FSearched) + '/' + IntToStr(MemoFiles.Lines.count)
+    + ', ' + 'changed: ' + IntToStr(FChanged) + ' classes.'
+  );
 end;
 
 procedure TForm1.setStatue(const S: string);
 begin
-  self.StatusBar1.Panels[0].Text := S;
-  Application.ProcessMessages;
+  setStatueN(S, 0);
 end;
 
 procedure TForm1.setStatueN(const S: string; const n: integer);
